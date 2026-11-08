@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Autonomous Trading Agent — Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0b0e14; --panel: #141a24; --border: #1f2937;
+      --text: #e5e7eb; --muted: #9ca3af; --green: #22c55e;
+      --red: #ef4444; --accent: #3b82f6; --amber: #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 24px;
+    }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+    .badge { padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .badge.paper { background: rgba(245,158,11,.15); color: var(--amber); }
+    .badge.live { background: rgba(34,197,94,.15); color: var(--green); }
+    .grid { display: grid; gap: 16px; }
+    .cards { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 16px; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+    .card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+    .card .value { font-size: 26px; font-weight: 700; margin-top: 6px; }
+    .green { color: var(--green); } .red { color: var(--red); }
+    .panels { grid-template-columns: 2fr 1fr; }
+    @media (max-width: 900px) { .panels { grid-template-columns: 1fr; } }
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+    .panel h2 { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+    .pill { padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+    .buy { background: rgba(34,197,94,.15); color: var(--green); }
+    .sell { background: rgba(239,68,68,.15); color: var(--red); }
+    .hold { background: rgba(156,163,175,.15); color: var(--muted); }
+    .scroll { max-height: 320px; overflow-y: auto; }
+    canvas { width: 100% !important; }
+    .muted { color: var(--muted); font-size: 12px; }
+  </style>
+<script src="https://sites.super.myninja.ai/_assets/ninja-daytona-script.js"></script>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Autonomous Trading Agent</h1>
+      <div class="muted" id="symbols">—</div>
+    </div>
+    <div class="badge paper" id="mode">PAPER</div>
+  </header>
+
+  <div class="grid cards">
+    <div class="card"><div class="label">Equity</div><div class="value" id="equity">—</div></div>
+    <div class="card"><div class="label">Cash</div><div class="value" id="cash">—</div></div>
+    <div class="card"><div class="label">Total PnL</div><div class="value" id="pnl">—</div></div>
+    <div class="card"><div class="label">Win Rate</div><div class="value" id="winrate">—</div></div>
+    <div class="card"><div class="label">Open Positions</div><div class="value" id="positions">—</div></div>
+  </div>
+
+  <div class="grid panels">
+    <div class="panel">
+      <h2>Equity Curve</h2>
+      <canvas id="equityChart" height="220"></canvas>
+    </div>
+    <div class="panel">
+      <h2>Recent Signals</h2>
+      <div class="scroll"><table><thead><tr><th>Symbol</th><th>Action</th><th>Conf</th></tr></thead>
+        <tbody id="signalsBody"></tbody></table></div>
+    </div>
+  </div>
+
+  <div class="grid panels" style="margin-top:16px;">
+    <div class="panel">
+      <h2>Open Trades</h2>
+      <div class="scroll"><table><thead><tr><th>Symbol</th><th>Side</th><th>Qty</th><th>Entry</th><th>SL</th><th>TP</th></tr></thead>
+        <tbody id="openBody"></tbody></table></div>
+    </div>
+    <div class="panel">
+      <h2>Recent Logs</h2>
+      <div class="scroll" id="logsBox" style="font-family:monospace;font-size:12px;line-height:1.6;"></div>
+    </div>
+  </div>
+
+  <script>
+    const fmt = (n) => (n === undefined || n === null) ? '—' : Number(n).toLocaleString(undefined, {maximumFractionDigits: 2});
+    let chart;
+
+    async function load() {
+      try {
+        const s = await (await fetch('/api/summary')).json();
+        document.getElementById('mode').textContent = s.mode.toUpperCase();
+        document.getElementById('mode').className = 'badge ' + s.mode;
+        document.getElementById('symbols').textContent = s.symbols.join('  ·  ');
+        document.getElementById('equity').textContent = '$' + fmt(s.equity);
+        document.getElementById('cash').textContent = '$' + fmt(s.cash);
+        const pnl = s.performance.total_pnl;
+        const pnlEl = document.getElementById('pnl');
+        pnlEl.textContent = (pnl >= 0 ? '+' : '') + '$' + fmt(pnl);
+        pnlEl.className = 'value ' + (pnl >= 0 ? 'green' : 'red');
+        document.getElementById('winrate').textContent = (s.performance.win_rate * 100).toFixed(1) + '%';
+        document.getElementById('positions').textContent = s.open_positions;
+
+        const eq = await (await fetch('/api/equity')).json();
+        renderChart(eq);
+
+        const sig = await (await fetch('/api/signals')).json();
+        document.getElementById('signalsBody').innerHTML = sig.slice(0, 12).map(x =>
+          `<tr><td>${x.symbol}</td><td><span class="pill ${x.action}">${x.action.toUpperCase()}</span></td><td>${(x.confidence*100).toFixed(0)}%</td></tr>`
+        ).join('') || '<tr><td colspan="3" class="muted">No signals yet</td></tr>';
+
+        const t = await (await fetch('/api/trades')).json();
+        document.getElementById('openBody').innerHTML = t.open.map(x =>
+          `<tr><td>${x.symbol}</td><td><span class="pill ${x.side}">${x.side.toUpperCase()}</span></td><td>${Number(x.qty).toFixed(4)}</td><td>${fmt(x.entry_price)}</td><td>${fmt(x.stop_loss)}</td><td>${fmt(x.take_profit)}</td></tr>`
+        ).join('') || '<tr><td colspan="6" class="muted">No open positions</td></tr>';
+
+        const logs = await (await fetch('/api/logs')).json();
+        document.getElementById('logsBox').innerHTML = logs.slice(0, 20).map(l =>
+          `<div><span class="muted">${new Date(l.ts*1000).toLocaleTimeString()}</span> ${l.message}</div>`
+        ).join('') || '<div class="muted">No logs</div>';
+      } catch (e) { console.error(e); }
+    }
+
+    function renderChart(data) {
+      const labels = data.map(d => new Date(d.ts * 1000).toLocaleTimeString());
+      const values = data.map(d => d.equity);
+      const ctx = document.getElementById('equityChart');
+      if (chart) { chart.data.labels = labels; chart.data.datasets[0].data = values; chart.update(); return; }
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets: [{ label: 'Equity', data: values, borderColor: '#3b82f6',
+          backgroundColor: 'rgba(59,130,246,.12)', fill: true, tension: .3, pointRadius: 0, borderWidth: 2 }] },
+        options: { plugins: { legend: { display: false } },
+          scales: { x: { display: false }, y: { grid: { color: '#1f2937' }, ticks: { color: '#9ca3af' } } } }
+      });
+    }
+
+    load();
+    setInterval(load, 5000);
+  </script>
+</body>
+</html>
