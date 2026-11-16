@@ -17,13 +17,28 @@ log = logging.getLogger("paper")
 
 
 class PaperBroker:
-    def __init__(self, initial_balance: float = 10_000.0, fee_rate: float = 0.001):
+    def __init__(self, initial_balance: float = 1000.0, fee_rate: float = 0.001, state_store=None):
         self.initial_balance = initial_balance
-        self.cash = initial_balance
         self.fee_rate = fee_rate
-        # symbol -> {"qty": float, "avg_price": float}
-        self.positions: Dict[str, Dict[str, float]] = {}
+        self.state_store = state_store
         self._lock = threading.RLock()
+        saved = state_store.load_paper_state() if state_store is not None else None
+        self.cash = float(saved.get("cash", initial_balance)) if saved else initial_balance
+        self.positions: Dict[str, Dict[str, float]] = (
+            {k: {"qty": float(v["qty"]), "avg_price": float(v["avg_price"])}
+             for k, v in saved.get("positions", {}).items()}
+            if saved else {}
+        )
+        if state_store is not None and saved is None:
+            self._persist()
+
+    def _persist(self) -> None:
+        if self.state_store is not None:
+            self.state_store.save_paper_state({
+                "cash": self.cash,
+                "positions": self.positions,
+                "initial_balance": self.initial_balance,
+            })
 
     # ---- valuation ----
     def position_qty(self, symbol: str) -> float:
@@ -63,6 +78,7 @@ class PaperBroker:
             pos["avg_price"] = ((pos["qty"] * pos["avg_price"]) + (qty * price)) / new_qty if new_qty else 0.0
             pos["qty"] = new_qty
             self.positions[symbol] = pos
+            self._persist()
             return OrderResult(True, symbol, "buy", qty, price, "filled",
                                f"bought {qty:.6f} @ {price:.4f}")
 
@@ -78,6 +94,7 @@ class PaperBroker:
             pos["qty"] -= qty
             if pos["qty"] <= 1e-12:
                 self.positions.pop(symbol, None)
+            self._persist()
             return OrderResult(True, symbol, "sell", qty, price, "filled",
                                f"sold {qty:.6f} @ {price:.4f}")
 
