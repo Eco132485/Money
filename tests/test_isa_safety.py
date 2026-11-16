@@ -57,3 +57,32 @@ def test_runtime_is_paper_only_even_if_live_env_is_set(monkeypatch):
     from trading_agent.config import RuntimeConfig
     monkeypatch.setenv("TRADING_MODE", "live")
     assert RuntimeConfig().mode == "paper"
+
+
+def test_forex_short_persists_and_closes_with_profit(tmp_path):
+    db = Database(str(tmp_path / "short.db"))
+    first = PaperBroker(initial_balance=1000.0, fee_rate=0.0, state_store=db)
+    opened = first.market_short("FX:EURUSD", 300.0, 1.10)
+    assert opened.ok
+    assert first.position_side("FX:EURUSD") == "short"
+    assert abs(first.equity({"FX:EURUSD": 1.10}) - 1000.0) < 1e-8
+
+    restarted = PaperBroker(initial_balance=1000.0, fee_rate=0.0, state_store=db)
+    assert restarted.position_side("FX:EURUSD") == "short"
+    covered = restarted.market_cover("FX:EURUSD", restarted.position_qty("FX:EURUSD"), 1.00)
+    assert covered.ok
+    assert restarted.position_side("FX:EURUSD") is None
+    assert restarted.cash > 1000.0
+
+
+def test_short_risk_defaults_have_correct_direction():
+    from trading_agent.config import RiskConfig
+    from trading_agent.risk_management import RiskManager
+    rm = RiskManager(RiskConfig(max_position_pct=0.30, max_portfolio_exposure_pct=0.30,
+                                risk_per_trade_pct=0.01, min_confidence=0.5))
+    decision = rm.pre_trade_check(
+        equity=1000, price=1.10, confidence=0.9, current_exposure=0,
+        open_positions=0, day_start_equity=1000, peak_equity=1000, side="sell"
+    )
+    assert decision.approved
+    assert decision.stop_loss > 1.10 > decision.take_profit
