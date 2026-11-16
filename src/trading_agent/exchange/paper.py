@@ -76,15 +76,15 @@ class PaperBroker:
         with self._lock:
             if price <= 0:
                 return OrderResult(False, symbol, "buy", 0, price, "rejected", "invalid price")
+            pos = self.positions.get(symbol, {"qty": 0.0, "avg_price": 0.0, "side": "long", "margin": 0.0})
+            if pos.get("side", "long") != "long":
+                return OrderResult(False, symbol, "buy", 0, price, "rejected", "short position must be covered first")
             cost = quote_amount
             fee = cost * self.fee_rate
             if cost + fee > self.cash + 1e-9:
                 return OrderResult(False, symbol, "buy", 0, price, "rejected", "insufficient cash")
             qty = quote_amount / price
             self.cash -= (cost + fee)
-            pos = self.positions.get(symbol, {"qty": 0.0, "avg_price": 0.0, "side": "long", "margin": 0.0})
-            if pos.get("side", "long") != "long":
-                return OrderResult(False, symbol, "buy", 0, price, "rejected", "short position must be covered first")
             new_qty = pos["qty"] + qty
             pos["avg_price"] = ((pos["qty"] * pos["avg_price"]) + (qty * price)) / new_qty if new_qty else 0.0
             pos["qty"] = new_qty
