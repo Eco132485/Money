@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - feature/isa-dual-market-free-paper
+      - feature/autonomous-trading-agent
   pull_request:
     branches:
       - feature/autonomous-trading-agent
