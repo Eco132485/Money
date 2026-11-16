@@ -1,6 +1,6 @@
 """
-Trade execution: routes approved orders to the paper broker (default) or a
-live exchange adapter, records everything, and enforces risk at the boundary.
+Paper-only trade execution for long crypto/FX positions and unleveraged FX shorts.
+All entries pass server-side risk checks and all fills are recorded in SQLite.
 """
 from __future__ import annotations
 
