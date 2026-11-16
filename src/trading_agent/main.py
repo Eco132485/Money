@@ -98,6 +98,13 @@ class TradingAgent:
         candles = market.get_klines(raw_symbol, settings.runtime.timeframe, 300)
         if len(candles) < 30:
             raise ValueError(f"insufficient candles for {portfolio_symbol}")
+        interval_seconds = {"1m": 60, "5m": 300, "15m": 900, "30m": 1800,
+                            "1h": 3600, "4h": 14400, "1d": 86400}.get(settings.runtime.timeframe)
+        if interval_seconds is None:
+            raise ValueError(f"unsupported timeframe: {settings.runtime.timeframe}")
+        candle_age = time.time() - (candles[-1].ts / 1000.0)
+        if candle_age > interval_seconds * 2:
+            raise ValueError(f"stale market candles for {portfolio_symbol}")
         df = candles_to_df(candles)
         view = analyze(candles, portfolio_symbol)
         candidate = self.engine.generate(df)
@@ -113,8 +120,6 @@ class TradingAgent:
 
         # Keep the per-cycle price snapshot shared across both markets. Missing
         # quotes block new entries so exposure cannot be understated.
-        if portfolio_symbol not in prices:
-            prices[portfolio_symbol] = view.price
         expected = [key for _, _, key in self._market_items()]
         prices_complete = all(key in prices for key in expected)
         equity = self.broker.equity(prices)
