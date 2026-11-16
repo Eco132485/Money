@@ -1,3 +1,29 @@
+# ISA AUTO TRADING — zero-cost dual-market paper trader
+
+## Non-negotiable operating rules
+
+- Real capital is **$0**. The account starts with **$1,000 virtual paper equity** only.
+- Forex and crypto share one portfolio, one exposure ceiling, and one risk manager.
+- Execution is **paper-only**. No live broker order routes, deposits, withdrawals, or real-money transactions are part of this application.
+- Use free public market-data endpoints and a Gemini API key belonging to a Google AI Studio **Free Tier** project only.
+- Never enable Google Cloud billing or paid Gemini usage. The application requires `ISA_GEMINI_FREE_TIER_CONFIRMED=true` as an explicit operator confirmation; this flag is not a billing-status detector.
+- If the Gemini key is absent, the free-tier confirmation is absent, quota is exhausted, market data is unavailable/stale, or AI output is invalid, new entries are held. No rule-based or paid-provider fallback is allowed.
+- No paid hosting, subscriptions, API credits, premium market data, or external service should be activated by this project.
+
+## Markets and risk
+
+- Crypto defaults: BTCUSDT, ETHUSDT.
+- Forex defaults: EURUSD, GBPUSD, USDJPY. Forex quotes use a free public Yahoo Finance chart endpoint and may be rate-limited or delayed; this is not an institutional FX feed.
+- Risk per trade: 1% maximum of current virtual equity.
+- Daily loss stop: 3%; maximum peak-to-trough drawdown: 15%.
+- Combined Forex + crypto exposure: 30% maximum.
+- Maximum open positions: 5.
+- Paper account state is persisted in SQLite and restored after restart.
+
+## Free-tier AI setup
+
+Set `ISA_GEMINI_API_KEY` using a secret environment variable on the server. Create the key in a project that remains on Google's free tier with billing not linked. Only then set `ISA_GEMINI_FREE_TIER_CONFIRMED=true`. The model ID is `gemini-3.8-flash`. Do not put the key in frontend code, commit it, or paste it into logs/issues. If the free tier is unavailable, keep the confirmation false; the app will not open new trades.
+
 # Autonomous Trading Agent
 
 A production-ready, fully autonomous quantitative trading agent. It researches
