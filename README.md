@@ -13,7 +13,7 @@
 ## Markets and risk
 
 - Crypto defaults: BTCUSDT, ETHUSDT.
-- Forex defaults: EURUSD, GBPUSD, USDJPY. Forex quotes use a free public Yahoo Finance chart endpoint and may be rate-limited or delayed; this is not an institutional FX feed.
+- Forex defaults: EURUSD and GBPUSD (USD-quoted pairs compatible with the current USD paper ledger). USDJPY is not enabled until quote-currency conversion is implemented. Forex quotes use a free public Yahoo Finance chart endpoint and may be rate-limited or delayed; this is not an institutional FX feed.
 - Risk per trade: 1% maximum of current virtual equity.
 - Daily loss stop: 3%; maximum peak-to-trough drawdown: 15%.
 - Combined Forex + crypto exposure: 30% maximum.
