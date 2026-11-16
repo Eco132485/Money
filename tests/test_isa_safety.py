@@ -114,3 +114,30 @@ def test_rejected_buy_does_not_change_short_account_cash():
     rejected = broker.market_buy("FX:EURUSD", 100.0, 1.10)
     assert not rejected.ok
     assert broker.cash == before
+
+
+def test_restart_recovery_rebuilds_missing_trade_record(tmp_path):
+    from trading_agent.main import reconcile_paper_state
+    from trading_agent.risk_management import RiskManager
+    db = Database(str(tmp_path / "recover.db"))
+    broker = PaperBroker(initial_balance=1000.0, fee_rate=0.0, state_store=db)
+    assert broker.market_buy("BTCUSDT", 200.0, 100.0).ok
+    risk = RiskManager()
+    reconcile_paper_state(db, broker, risk)
+    rows = db.open_trades()
+    assert len(rows) == 1
+    assert rows[0]["strategy"] == "restart_recovery"
+    assert rows[0]["stop_loss"] < rows[0]["entry_price"] < rows[0]["take_profit"]
+    assert not risk.killed
+
+
+def test_orphan_trade_record_triggers_kill_switch(tmp_path):
+    from trading_agent.main import reconcile_paper_state
+    from trading_agent.risk_management import RiskManager
+    db = Database(str(tmp_path / "orphan.db"))
+    broker = PaperBroker(initial_balance=1000.0, state_store=db)
+    db.open_trade("BTCUSDT", "buy", 1.0, 100.0, "test", 98.0, 104.0)
+    risk = RiskManager()
+    reconcile_paper_state(db, broker, risk)
+    assert risk.killed
+    assert "broker position missing" in risk.kill_reason
