@@ -86,3 +86,31 @@ def test_short_risk_defaults_have_correct_direction():
     )
     assert decision.approved
     assert decision.stop_loss > 1.10 > decision.take_profit
+
+
+def test_short_cover_trade_history_records_positive_profit(tmp_path):
+    from trading_agent.risk_management import RiskDecision, RiskManager
+    from trading_agent.trade_execution import TradeExecutor
+    db = Database(str(tmp_path / "short-history.db"))
+    broker = PaperBroker(initial_balance=1000.0, fee_rate=0.0, state_store=db)
+    executor = TradeExecutor(broker, RiskManager(), db)
+    decision = RiskDecision(True, "approved", qty=100.0, stop_loss=1.2,
+                            take_profit=1.0, risk_amount=10.0)
+    opened = executor.open_short("FX:EURUSD", decision, 1.10, "test", 0.9)
+    assert opened and opened.ok
+    covered = executor.cover_short("FX:EURUSD", opened.qty, 1.00)
+    assert covered and covered.ok
+    closed = db.closed_trades()
+    assert len(closed) == 1
+    assert closed[0]["side"] == "sell"
+    assert closed[0]["pnl"] > 0
+    assert closed[0]["pnl_pct"] > 0
+
+
+def test_rejected_buy_does_not_change_short_account_cash():
+    broker = PaperBroker(initial_balance=1000.0, fee_rate=0.0)
+    assert broker.market_short("FX:EURUSD", 300.0, 1.10).ok
+    before = broker.cash
+    rejected = broker.market_buy("FX:EURUSD", 100.0, 1.10)
+    assert not rejected.ok
+    assert broker.cash == before
