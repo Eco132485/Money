@@ -116,6 +116,7 @@ class TradingAgent:
                 day_start_equity=self.db.day_start_equity(),
                 peak_equity=self.db.peak_equity() or equity,
                 stop_loss=candidate.stop_loss, take_profit=candidate.take_profit,
+                side="sell",
             )
             if decision.approved:
                 self.executor.open_short(portfolio_symbol, decision, view.price,
