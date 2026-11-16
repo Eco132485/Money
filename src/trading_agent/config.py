@@ -31,7 +31,7 @@ def _get_int(name: str, default: int) -> int:
 
 @dataclass
 class ExchangeConfig:
-    name: str = os.getenv("EXCHANGE", "binance")
+    name: str = os.getenv("EXCHANGE", "kraken")
     market_type: str = "spot"
     base_url: str = os.getenv("EXCHANGE_BASE_URL", "https://api.binance.com")
     api_key: str = ""
