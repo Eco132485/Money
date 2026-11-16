@@ -1,115 +1,68 @@
-"""
-Provider-agnostic LLM client.
-
-Supports OpenAI-compatible endpoints and Anthropic. If no provider/key is
-configured (or a call fails), it degrades gracefully to a deterministic
-rule-based "reasoner" so the agent always keeps working.
-"""
+"""Fail-closed Gemini client. No paid provider fallback and no rule-signal fallback."""
 from __future__ import annotations
-
 import json
 import logging
-from typing import Any, Dict, Optional
-
+from typing import Any, Dict
 import requests
-
 from .config import settings
 
 log = logging.getLogger("llm")
 
-
 class LLMClient:
-    def __init__(self) -> None:
+    def __init__(self):
         self.cfg = settings.llm
 
     @property
     def available(self) -> bool:
-        return bool(self.cfg.enabled and self.cfg.api_key and self.cfg.provider != "rule")
+        return bool(self.cfg.enabled and self.cfg.api_key and self.cfg.free_tier_confirmed
+                    and self.cfg.provider == "google" and self.cfg.model == "gemini-3.8-flash")
 
     def complete(self, system: str, user: str) -> str:
-        """Return raw text completion. Falls back to empty string on failure."""
         if not self.available:
             return ""
-        try:
-            if self.cfg.provider == "anthropic":
-                return self._anthropic(system, user)
-            return self._openai(system, user)
-        except Exception as exc:  # pragma: no cover - network dependent
-            log.warning("LLM call failed (%s); using rule fallback", exc)
+        url = f"{self.cfg.base_url}/models/{self.cfg.model}:generateContent"
+        response = requests.post(
+            url, params={"key": self.cfg.api_key},
+            json={
+                "systemInstruction": {"parts": [{"text": system}]},
+                "contents": [{"role": "user", "parts": [{"text": user}]}],
+                "generationConfig": {
+                    "temperature": self.cfg.temperature,
+                    "maxOutputTokens": self.cfg.max_tokens,
+                    "responseMimeType": "application/json",
+                },
+            }, timeout=30,
+        )
+        response.raise_for_status()
+        candidates = response.json().get("candidates", [])
+        if not candidates:
             return ""
-
-    def _openai(self, system: str, user: str) -> str:
-        base = self.cfg.base_url or "https://api.openai.com/v1"
-        resp = requests.post(
-            f"{base.rstrip('/')}/chat/completions",
-            headers={"Authorization": f"Bearer {self.cfg.api_key}"},
-            json={
-                "model": self.cfg.model,
-                "temperature": self.cfg.temperature,
-                "max_tokens": self.cfg.max_tokens,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-            },
-            timeout=30,
-        )
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
-
-    def _anthropic(self, system: str, user: str) -> str:
-        base = self.cfg.base_url or "https://api.anthropic.com/v1"
-        resp = requests.post(
-            f"{base.rstrip('/')}/messages",
-            headers={
-                "x-api-key": self.cfg.api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={
-                "model": self.cfg.model,
-                "max_tokens": self.cfg.max_tokens,
-                "temperature": self.cfg.temperature,
-                "system": system,
-                "messages": [{"role": "user", "content": user}],
-            },
-            timeout=30,
-        )
-        resp.raise_for_status()
-        return resp.json()["content"][0]["text"]
+        return "".join(p.get("text", "") for p in candidates[0].get("content", {}).get("parts", []))
 
     def reason_signal(self, context: Dict[str, Any], rule_signal: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Ask the LLM to review/refine a rule-based signal. Returns a dict with
-        keys: action, confidence, rationale. On any issue returns rule_signal.
-        """
+        hold = {"action": "hold", "confidence": 0.0,
+                "rationale": "AI unavailable or response invalid; trading suspended"}
         if not self.available:
-            return rule_signal
+            return hold
         system = (
-            "You are a senior quantitative trading analyst. Given market context and a "
-            "candidate signal, reply ONLY with JSON: "
-            '{"action":"buy|sell|hold","confidence":0-1,"rationale":"short"}. '
-            "Be conservative; prefer hold when uncertain."
+            "You are a cautious market analyst. Review the supplied market data and candidate. "
+            "Return JSON only with action buy, sell, or hold; confidence from 0 to 1; rationale. "
+            "Never invent missing market facts. If uncertain, return hold."
         )
-        user = json.dumps({"context": context, "candidate": rule_signal}, default=str)
-        raw = self.complete(system, user)
-        if not raw:
-            return rule_signal
         try:
-            start = raw.find("{")
-            end = raw.rfind("}")
-            data = json.loads(raw[start:end + 1])
-            action = str(data.get("action", rule_signal["action"])).lower()
-            if action not in {"buy", "sell", "hold"}:
-                return rule_signal
-            conf = float(data.get("confidence", rule_signal["confidence"]))
-            return {
-                "action": action,
-                "confidence": max(0.0, min(1.0, conf)),
-                "rationale": str(data.get("rationale", rule_signal.get("rationale", "")))[:300],
-            }
-        except Exception:
-            return rule_signal
-
+            raw = self.complete(system, json.dumps(
+                {"market": context, "candidate": rule_signal}, default=str
+            ))
+            data = json.loads(raw)
+            action = str(data.get("action", "")).lower()
+            confidence = float(data.get("confidence", 0))
+            rationale = str(data.get("rationale", ""))[:300]
+            if action not in {"buy", "sell", "hold"} or not 0 <= confidence <= 1 or not rationale:
+                return hold
+            return {"action": action, "confidence": confidence, "rationale": rationale}
+        except Exception as exc:
+            # Do not log request URLs, headers, response bodies or API credentials.
+            log.warning("Gemini request failed (%s); new decisions paused", type(exc).__name__)
+            return hold
 
 llm_client = LLMClient()
