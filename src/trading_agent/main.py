@@ -83,8 +83,12 @@ class TradingAgent:
         equity = self.broker.equity(prices)
         exposure = self.broker.exposure(prices)
         position_qty = self.broker.position_qty(portfolio_symbol)
+        position_side = self.broker.position_side(portfolio_symbol)
+        is_forex = portfolio_symbol.startswith("FX:")
 
-        if action == "buy" and position_qty <= 0 and prices_complete:
+        if action == "buy" and position_side == "short":
+            self.executor.cover_short(portfolio_symbol, position_qty, view.price, reason="AI buy signal")
+        elif action == "buy" and position_side is None and prices_complete:
             decision = self.risk.pre_trade_check(
                 equity=equity, price=view.price, confidence=confidence,
                 current_exposure=exposure, open_positions=len(self.db.open_trades()),
@@ -103,8 +107,22 @@ class TradingAgent:
             else:
                 self.db.record_order(portfolio_symbol, "buy", 0, view.price, "rejected",
                                      "paper", reason=decision.reason, confidence=confidence)
-        elif action == "sell" and position_qty > 0:
-            self.executor.sell(portfolio_symbol, position_qty, view.price, reason="AI signal")
+        elif action == "sell" and position_side == "long":
+            self.executor.sell(portfolio_symbol, position_qty, view.price, reason="AI sell signal")
+        elif action == "sell" and position_side is None and is_forex and prices_complete:
+            decision = self.risk.pre_trade_check(
+                equity=equity, price=view.price, confidence=confidence,
+                current_exposure=exposure, open_positions=len(self.db.open_trades()),
+                day_start_equity=self.db.day_start_equity(),
+                peak_equity=self.db.peak_equity() or equity,
+                stop_loss=candidate.stop_loss, take_profit=candidate.take_profit,
+            )
+            if decision.approved:
+                self.executor.open_short(portfolio_symbol, decision, view.price,
+                                         candidate.strategy, confidence)
+            else:
+                self.db.record_order(portfolio_symbol, "sell", 0, view.price, "rejected",
+                                     "paper", reason=decision.reason, confidence=confidence)
 
         log.info("%s price=%.6f AI=%s confidence=%.2f", portfolio_symbol,
                  view.price, action, confidence)
