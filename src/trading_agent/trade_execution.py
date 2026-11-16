@@ -49,13 +49,43 @@ class TradeExecutor:
             log.info("SELL %s qty=%.6f @ %.4f (%s)", symbol, res.qty, price, reason)
         return res
 
+    def open_short(self, symbol: str, decision: RiskDecision, price: float,
+                   strategy: str, confidence: float) -> Optional[OrderResult]:
+        if not decision.approved:
+            self.db.record_order(symbol, "sell", 0, price, "rejected", "paper",
+                                 reason=decision.reason, confidence=confidence)
+            return None
+        res = self.broker.market_short(symbol, decision.qty * price, price)
+        self.db.record_order(symbol, "sell", res.qty, price,
+                             "filled" if res.ok else "rejected", "paper",
+                             reason=decision.reason, confidence=confidence)
+        if res.ok:
+            self.db.open_trade(symbol, "sell", res.qty, price, strategy,
+                               decision.stop_loss, decision.take_profit)
+            log.info("PAPER SHORT %s qty=%.6f @ %.6f (%s)", symbol, res.qty, price, strategy)
+        return res
+
+    def cover_short(self, symbol: str, qty: float, price: float,
+                    reason: str = "AI signal") -> Optional[OrderResult]:
+        res = self.broker.market_cover(symbol, qty, price)
+        self.db.record_order(symbol, "buy", res.qty, price,
+                             "filled" if res.ok else "rejected", "paper", reason=reason)
+        if res.ok:
+            self._close_trades(symbol, price)
+            log.info("PAPER COVER %s qty=%.6f @ %.6f (%s)", symbol, res.qty, price, reason)
+        return res
+
     def _close_trades(self, symbol: str, price: float) -> None:
         """Close open trade records for this symbol at the given price."""
         for t in self.db.open_trades():
             if t["symbol"] != symbol:
                 continue
-            pnl = (price - t["entry_price"]) * t["qty"]
-            pnl_pct = (price / t["entry_price"] - 1) if t["entry_price"] else 0.0
+            if t["side"] == "sell":
+                pnl = (t["entry_price"] - price) * t["qty"]
+                pnl_pct = (t["entry_price"] - price) / t["entry_price"] if t["entry_price"] else 0.0
+            else:
+                pnl = (price - t["entry_price"]) * t["qty"]
+                pnl_pct = (price / t["entry_price"] - 1) if t["entry_price"] else 0.0
             self.db.close_trade(t["id"], price, pnl, pnl_pct)
 
     def manage_exits(self, prices: Dict[str, float]) -> List[str]:
@@ -68,6 +98,9 @@ class TradeExecutor:
             reason = self.risk.check_exit(t["side"], t["entry_price"], price,
                                           t.get("stop_loss"), t.get("take_profit"))
             if reason:
-                self.sell(t["symbol"], t["qty"], price, reason=reason)
+                if t["side"] == "sell":
+                    self.cover_short(t["symbol"], t["qty"], price, reason=reason)
+                else:
+                    self.sell(t["symbol"], t["qty"], price, reason=reason)
                 closed.append(f"{t['symbol']}:{reason}")
         return closed
