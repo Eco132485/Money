@@ -77,7 +77,7 @@ class RuntimeConfig:
         s.strip().upper() for s in os.getenv("CRYPTO_SYMBOLS", os.getenv("SYMBOLS", "BTCUSDT,ETHUSDT")).split(",") if s.strip()
     ])
     forex_symbols: List[str] = field(default_factory=lambda: [
-        s.strip().upper() for s in os.getenv("FOREX_SYMBOLS", "EURUSD,GBPUSD,USDJPY").split(",") if s.strip()
+        s.strip().upper() for s in os.getenv("FOREX_SYMBOLS", "EURUSD,GBPUSD").split(",") if s.strip()
     ])
     timeframe: str = os.getenv("TIMEFRAME", "1h")
     loop_interval_sec: int = _get_int("LOOP_INTERVAL_SEC", 60)
