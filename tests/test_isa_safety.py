@@ -36,3 +36,24 @@ def test_invalid_forex_symbol_rejected():
     except ValueError:
         return
     assert False, "crypto symbols must not be accepted as FX pairs"
+
+
+def test_shared_exposure_cap_limits_new_trade_size():
+    from trading_agent.config import RiskConfig
+    from trading_agent.risk_management import RiskManager
+    cfg = RiskConfig(max_position_pct=0.30, max_portfolio_exposure_pct=0.30,
+                     risk_per_trade_pct=0.01, min_confidence=0.5)
+    risk = RiskManager(cfg)
+    decision = risk.pre_trade_check(
+        equity=1000, price=100, confidence=0.9, current_exposure=290,
+        open_positions=1, day_start_equity=1000, peak_equity=1000,
+        stop_loss=98, take_profit=104,
+    )
+    assert decision.approved
+    assert 290 + decision.qty * 100 <= 300 + 1e-8
+
+
+def test_runtime_is_paper_only_even_if_live_env_is_set(monkeypatch):
+    from trading_agent.config import RuntimeConfig
+    monkeypatch.setenv("TRADING_MODE", "live")
+    assert RuntimeConfig().mode == "paper"
