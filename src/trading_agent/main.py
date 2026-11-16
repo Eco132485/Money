@@ -27,6 +27,42 @@ logging.basicConfig(
 log = logging.getLogger("agent")
 
 
+def reconcile_paper_state(db, broker: PaperBroker, risk: RiskManager) -> None:
+    """Reconcile the durable broker ledger with durable trade rows after a crash."""
+    positions = dict(broker.positions)
+    open_trades = db.open_trades()
+    trades_by_symbol = {trade["symbol"]: trade for trade in open_trades}
+
+    # A broker fill may have persisted just before the process crashed, before
+    # the trade row was committed. Rebuild a conservative protective trade row.
+    for symbol, position in positions.items():
+        if symbol in trades_by_symbol:
+            continue
+        side = position.get("side", "long")
+        entry = float(position["avg_price"])
+        if side == "short":
+            trade_side = "sell"
+            stop = entry * (1 + settings.risk.stop_loss_pct)
+            target = entry * (1 - settings.risk.take_profit_pct)
+        else:
+            trade_side = "buy"
+            stop = entry * (1 - settings.risk.stop_loss_pct)
+            target = entry * (1 + settings.risk.take_profit_pct)
+        db.open_trade(symbol, trade_side, float(position["qty"]), entry,
+                      "restart_recovery", stop, target)
+        db.log("WARNING", "recovery",
+               f"Reconstructed missing trade record for persisted {trade_side} position {symbol}")
+
+    # A trade row without a broker position means the two ledgers disagree.
+    # Do not invent an exit price or P/L: trip the kill switch for manual review.
+    for trade in open_trades:
+        if trade["symbol"] not in positions:
+            reason = f"orphaned trade record for {trade['symbol']}; broker position missing"
+            risk.trigger_kill_switch(reason)
+            db.log("CRITICAL", "recovery", reason)
+
+
+
 class TradingAgent:
     def __init__(self):
         self.db = get_db()
@@ -34,6 +70,7 @@ class TradingAgent:
         self.forex_market = YahooForexMarketData()
         self.broker = PaperBroker(initial_balance=1000.0, state_store=self.db)
         self.risk = RiskManager()
+        reconcile_paper_state(self.db, self.broker, self.risk)
         self.executor = TradeExecutor(self.broker, self.risk, self.db)
         self.engine = StrategyEngine()
         self.monitor = Monitor(self.db)
