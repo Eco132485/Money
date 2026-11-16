@@ -1,178 +1,81 @@
-# ISA AUTO TRADING — zero-cost dual-market paper trader
+# ISA AUTO TRADING
 
-## Non-negotiable operating rules
+A dual-market **Forex + crypto paper-trading application**. This repository is a software project, not a hosted 24/7 service.
 
-- Real capital is **$0**. The account starts with **$1,000 virtual paper equity** only.
-- Forex and crypto share one portfolio, one exposure ceiling, and one risk manager.
-- Execution is **paper-only**. No live broker order routes, deposits, withdrawals, or real-money transactions are part of this application.
-- Use free public market-data endpoints and a Gemini API key belonging to a Google AI Studio **Free Tier** project only.
-- Never enable Google Cloud billing or paid Gemini usage. The application requires `ISA_GEMINI_FREE_TIER_CONFIRMED=true` as an explicit operator confirmation; this flag is not a billing-status detector.
-- If the Gemini key is absent, the free-tier confirmation is absent, quota is exhausted, market data is unavailable/stale, or AI output is invalid, new entries are held. No rule-based or paid-provider fallback is allowed.
-- No paid hosting, subscriptions, API credits, premium market data, or external service should be activated by this project.
+## Hard operating rules
 
-## Markets and risk
+- **Real capital: $0.** The account begins with **$1,000 virtual paper equity**.
+- **Everything must remain free:** public read-only market data, open-source Python dependencies, free-tier AI only, and no paid hosting, subscriptions, API credits or premium endpoints.
+- **Paper-only execution.** There is no live broker order route. Deposits, withdrawals and real-money transactions are out of scope.
+- If AI is unavailable, free quota is exhausted, market data is unavailable, or an AI response is invalid, new entries are held. There is no rule-based or paid-provider fallback.
+- The project must never link a paid billing account or upgrade an API project to a paid tier.
 
-- Crypto defaults: BTCUSDT, ETHUSDT.
-- Forex defaults: EURUSD and GBPUSD (USD-quoted pairs compatible with the current USD paper ledger). USDJPY is not enabled until quote-currency conversion is implemented. Forex quotes use a free public Yahoo Finance chart endpoint and may be rate-limited or delayed; this is not an institutional FX feed.
-- Risk per trade: 1% maximum of current virtual equity.
-- Daily loss stop: 3%; maximum peak-to-trough drawdown: 15%.
-- Combined Forex + crypto exposure: 30% maximum.
+## Markets
+
+- Crypto defaults: BTCUSDT and ETHUSDT using Kraken's free public read-only API.
+- Forex defaults: EURUSD and GBPUSD using Yahoo Finance's public chart endpoint. Quotes can be delayed, unavailable or rate-limited.
+- USDJPY is intentionally not enabled because the paper ledger is USD-denominated and non-USD quote-currency conversion is not implemented.
+- Crypto supports long-only spot paper positions. Forex supports long and unleveraged short paper positions.
+- Forex short positions reserve virtual margin; no leverage is used.
+
+## Shared risk limits
+
+- Maximum risk per trade: 1% of current virtual equity.
+- Daily loss limit: 3%.
+- Maximum peak-to-trough drawdown: 15%.
+- Combined Forex + crypto gross exposure: 30% of virtual equity.
 - Maximum open positions: 5.
-- Paper account state is persisted in SQLite and restored after restart.
+- Position state is persisted in SQLite and restored after restart.
 
-## Free-tier AI setup
+## Gemini 3.8 Flash — free tier only
 
-Set `ISA_GEMINI_API_KEY` using a secret environment variable on the server. Create the key in a project that remains on Google's free tier with billing not linked. Only then set `ISA_GEMINI_FREE_TIER_CONFIRMED=true`. The model ID is `gemini-3.8-flash`. Do not put the key in frontend code, commit it, or paste it into logs/issues. If the free tier is unavailable, keep the confirmation false; the app will not open new trades.
+The model ID is `gemini-3.8-flash`. The official Google API pricing page lists a Free Tier with no token charge for this model, subject to account/model quotas. A paid tier also exists, so:
 
-# Autonomous Trading Agent
+1. Create a Google AI Studio API key in a project that remains on the Free Tier.
+2. Do **not** link Google Cloud billing or enable a paid tier.
+3. Set `ISA_GEMINI_API_KEY` as a server-side environment secret.
+4. Set `ISA_GEMINI_FREE_TIER_CONFIRMED=true` only after verifying that billing is not linked and the project is still on the Free Tier.
 
-A production-ready, fully autonomous quantitative trading agent. It researches
-markets, generates and backtests strategies, executes trades, manages risk, and
-continuously improves — designed to run 24/7 with minimal human input.
+The confirmation flag is an operator attestation, **not** an automated billing-status check. If you cannot guarantee the project is free-tier only, leave it false; the application will not make AI decisions or open new positions. Do not put the key in frontend code, source control, logs or issues. Google states that free-tier content may be used to improve its products; do not send private personal data.
 
-> **Safety first:** the agent defaults to **paper trading**. Live trading is
-> opt-in via `TRADING_MODE=live` and requires your own exchange API keys.
+## Run locally
 
-![Dashboard preview](dashboard_preview.png)
-
-> The screenshot above uses synthetic demo data (`scripts/seed_demo.py`) purely
-> to showcase the UI.
-
----
-
-## Architecture
-
-```
-                    ┌──────────────────────────────────────────┐
-                    │            Orchestrator (main.py)         │
-                    │  24/7 loop · scheduling · error handling  │
-                    └───────────────┬──────────────────────────┘
-                                    │
-   ┌───────────────┬────────────────┼─────────────────┬────────────────┐
-   ▼               ▼                ▼                 ▼                ▼
-Market Analysis  Strategy Engine  Risk Manager   Trade Executor   Monitoring
-(indicators,     (trend, mean-    (sizing, stops, (paper / live,   (metrics,
- regime, S/R)     reversion,       daily loss,     order routing)  Telegram,
-                  breakout,        drawdown,                        Discord)
-                  backtests)       kill switch)
-   │               │                │                 │                │
-   └───────────────┴────────────────┴─────────────────┴────────────────┘
-                                    │
-                         ┌──────────▼──────────┐
-                         │  SQLite storage     │
-                         │  trades · equity ·  │
-                         │  signals · logs     │
-                         └──────────┬──────────┘
-                                    │
-                         ┌──────────▼──────────┐
-                         │  FastAPI Dashboard  │
-                         │  PnL · win rate ·   │
-                         │  positions · signals│
-                         └─────────────────────┘
-```
-
-### Modules
-
-| Module | Responsibility |
-|--------|----------------|
-| `market_analysis.py` | EMA/RSI/MACD/ATR/Bollinger/ADX, trend, regime, support/resistance |
-| `strategy_engine.py` | TrendFollow, MeanReversion, Breakout + ensemble vote + backtester |
-| `risk_management.py` | Position sizing, stop/target, daily loss, max drawdown, kill switch |
-| `trade_execution.py` | Routes approved orders, records fills, manages exits |
-| `monitoring.py` | Performance metrics, Telegram/Discord alerts, daily reports |
-| `self_improvement.py` | Re-weights the strategy ensemble from backtest results |
-| `llm.py` | Provider-agnostic LLM client (OpenAI/Anthropic) with rule fallback |
-| `exchange/` | Binance/Bybit public data + paper-trading broker |
-| `dashboard/` | FastAPI + Chart.js real-time dashboard |
-
----
-
-## Quick start
+Python 3.11+:
 
 ```bash
-# 1. install
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-
-# 2. configure
-cp .env.example .env        # edit as needed (paper mode works with no keys)
-
-# 3. backtest
-python scripts/backtest.py --symbols BTCUSDT,ETHUSDT --timeframe 1h
-
-# 4. run paper trading (5 cycles)
+cp .env.example .env
+# Keep ISA_GEMINI_FREE_TIER_CONFIRMED=false until free-tier billing status is checked.
 python scripts/run_paper.py --cycles 5
-
-# 5. dashboard
-python dashboard/app.py     # http://localhost:8000
 ```
 
-Run the full 24/7 agent:
+Run the dashboard separately:
 
 ```bash
-PYTHONPATH=src python -m trading_agent.main
+python dashboard/app.py
 ```
 
----
+The dashboard binds to localhost by default. Do not expose it publicly without adding authentication and HTTPS.
 
-## Risk controls
-
-All limits are enforced in `risk_management.py` **before** any order is placed:
-
-- **Max position size:** 2% of equity per trade (`MAX_POSITION_PCT`)
-- **Risk per trade:** 1% of equity between entry and stop (`RISK_PER_TRADE_PCT`)
-- **Daily loss limit:** 3% → triggers kill switch (`MAX_DAILY_LOSS_PCT`)
-- **Max drawdown:** 15% peak-to-trough → triggers kill switch (`MAX_DRAWDOWN_PCT`)
-- **Portfolio exposure cap:** 30% (`MAX_PORTFOLIO_EXPOSURE_PCT`)
-- **Confidence gate:** only trade above `MIN_CONFIDENCE` (0.55)
-- **Kill switch:** halts trading on abnormal behavior / API errors
-
----
-
-## Configuration
-
-All secrets live in `.env` (never committed). See `.env.example` for the full
-list. The LLM layer is optional — with `LLM_ENABLED=false` the agent runs a
-deterministic rule-based ensemble and needs no external API.
-
----
-
-## Testing
+## Tests
 
 ```bash
-pytest
+pytest -vv
+python -m compileall -q src dashboard scripts tests
 ```
 
-Covers indicators, risk gates (including kill-switch paths), backtest metrics,
-and the paper-trading engine.
+GitHub Actions CI is configured for the feature branch. Local verification in the connected development sandbox is also required before considering changes ready.
 
----
+## Cost and deployment limits
 
-## Live trading (advanced)
+The Python packages and public market-data endpoints used here are free to access, subject to provider quotas and terms. The code does not provision paid infrastructure. A reliable always-on deployment is **not included**: a free hosting tier may sleep, throttle, or change its limits. Do not deploy to a service that requires a paid plan or billing account.
 
-1. Create exchange API keys with **trade** permission (no withdrawal).
-2. Set `EXCHANGE_API_KEY` / `EXCHANGE_API_SECRET` in `.env`.
-3. Start on testnet (`EXCHANGE_TESTNET=true`), verify behavior, then flip
-   `TRADING_MODE=live`.
+## Known limitations
 
-**This software is provided for educational purposes. Trading is risky and you
-can lose money. Use at your own risk.**
-
----
-
-## Project layout
-
-```
-money-repo/
-├── src/trading_agent/     # core package
-│   ├── config.py  db.py  llm.py  main.py
-│   ├── market_analysis.py  strategy_engine.py
-│   ├── risk_management.py  trade_execution.py
-│   ├── monitoring.py  self_improvement.py
-│   └── exchange/          # base, binance, bybit, paper
-├── dashboard/             # FastAPI app + HTML
-├── scripts/               # backtest, run_paper, daily_report
-├── tests/                 # pytest suite
-├── config/  data/  logs/
-├── requirements.txt  .env.example  Dockerfile
-```
+- Yahoo Finance is an unofficial public data source, not an institutional Forex feed; it can be delayed or rate-limited.
+- Only USD-quoted FX pairs EURUSD and GBPUSD are enabled. Other quote currencies require conversion support first.
+- Crypto is long-only spot paper trading; Forex supports long and unleveraged short simulation.
+- Gemini free-tier eligibility and billing attachment cannot be verified from this code; the operator must check Google AI Studio/Cloud billing settings.
+- No live trading, real-money performance claim, or guarantee of profitability is provided.
