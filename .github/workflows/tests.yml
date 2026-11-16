@@ -1,0 +1,29 @@
+name: Python tests
+on:
+  push:
+    branches:
+      - feature/isa-dual-market-free-paper
+  pull_request:
+    branches:
+      - feature/autonomous-trading-agent
+      - main
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run test suite
+        env:
+          ISA_GEMINI_FREE_TIER_CONFIRMED: "false"
+          TRADING_MODE: paper
+        run: pytest -q

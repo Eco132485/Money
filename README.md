@@ -1,152 +1,98 @@
-# Autonomous Trading Agent
+# ISA AUTO TRADING
 
-A production-ready, fully autonomous quantitative trading agent. It researches
-markets, generates and backtests strategies, executes trades, manages risk, and
-continuously improves — designed to run 24/7 with minimal human input.
+A dual-market **Forex + crypto paper-trading application**. It includes an optional best-effort scheduled runner on GitHub Actions; it is not a guaranteed 24/7 service.
 
-> **Safety first:** the agent defaults to **paper trading**. Live trading is
-> opt-in via `TRADING_MODE=live` and requires your own exchange API keys.
+## Hard operating rules
 
-![Dashboard preview](dashboard_preview.png)
+- **Real capital: $0.** The account begins with **$1,000 virtual paper equity**.
+- **Everything must remain free:** public read-only market data, open-source Python dependencies, free-tier AI only, and no paid hosting, subscriptions, API credits or premium endpoints.
+- **Paper-only execution.** There is no live broker order route. Deposits, withdrawals and real-money transactions are out of scope.
+- If AI is unavailable, free quota is exhausted, market data is unavailable, or an AI response is invalid, new entries are held. There is no rule-based or paid-provider fallback.
+- The project must never link a paid billing account or upgrade an API project to a paid tier.
 
-> The screenshot above uses synthetic demo data (`scripts/seed_demo.py`) purely
-> to showcase the UI.
+## Markets
 
----
+- Crypto defaults: BTCUSDT and ETHUSDT using Kraken's free public read-only API.
+- Forex defaults: EURUSD and GBPUSD using Yahoo Finance's public chart endpoint. Quotes can be delayed, unavailable or rate-limited.
+- USDJPY is intentionally not enabled because the paper ledger is USD-denominated and non-USD quote-currency conversion is not implemented.
+- Crypto supports long-only spot paper positions. Forex supports long and unleveraged short paper positions.
+- Forex short positions reserve virtual margin; no leverage is used.
 
-## Architecture
+## Shared risk limits
 
-```
-                    ┌──────────────────────────────────────────┐
-                    │            Orchestrator (main.py)         │
-                    │  24/7 loop · scheduling · error handling  │
-                    └───────────────┬──────────────────────────┘
-                                    │
-   ┌───────────────┬────────────────┼─────────────────┬────────────────┐
-   ▼               ▼                ▼                 ▼                ▼
-Market Analysis  Strategy Engine  Risk Manager   Trade Executor   Monitoring
-(indicators,     (trend, mean-    (sizing, stops, (paper / live,   (metrics,
- regime, S/R)     reversion,       daily loss,     order routing)  Telegram,
-                  breakout,        drawdown,                        Discord)
-                  backtests)       kill switch)
-   │               │                │                 │                │
-   └───────────────┴────────────────┴─────────────────┴────────────────┘
-                                    │
-                         ┌──────────▼──────────┐
-                         │  SQLite storage     │
-                         │  trades · equity ·  │
-                         │  signals · logs     │
-                         └──────────┬──────────┘
-                                    │
-                         ┌──────────▼──────────┐
-                         │  FastAPI Dashboard  │
-                         │  PnL · win rate ·   │
-                         │  positions · signals│
-                         └─────────────────────┘
-```
+- Maximum risk per trade: 1% of current virtual equity.
+- Daily loss limit: 3%.
+- Maximum peak-to-trough drawdown: 15%.
+- Combined Forex + crypto gross exposure: 30% of virtual equity.
+- Maximum open positions: 5.
+- Position state is persisted in SQLite and restored after restart.
 
-### Modules
+## Gemini 3.8 Flash — free tier only
 
-| Module | Responsibility |
-|--------|----------------|
-| `market_analysis.py` | EMA/RSI/MACD/ATR/Bollinger/ADX, trend, regime, support/resistance |
-| `strategy_engine.py` | TrendFollow, MeanReversion, Breakout + ensemble vote + backtester |
-| `risk_management.py` | Position sizing, stop/target, daily loss, max drawdown, kill switch |
-| `trade_execution.py` | Routes approved orders, records fills, manages exits |
-| `monitoring.py` | Performance metrics, Telegram/Discord alerts, daily reports |
-| `self_improvement.py` | Re-weights the strategy ensemble from backtest results |
-| `llm.py` | Provider-agnostic LLM client (OpenAI/Anthropic) with rule fallback |
-| `exchange/` | Binance/Bybit public data + paper-trading broker |
-| `dashboard/` | FastAPI + Chart.js real-time dashboard |
+The model ID is `gemini-3.8-flash`. The official Google API pricing page lists a Free Tier with no token charge for this model, subject to account/model quotas. A paid tier also exists, so:
 
----
+1. Create a Google AI Studio API key in a project that remains on the Free Tier.
+2. Do **not** link Google Cloud billing or enable a paid tier.
+3. Set `ISA_GEMINI_API_KEY` as a server-side environment secret.
+4. Set `ISA_GEMINI_FREE_TIER_CONFIRMED=true` only after verifying that billing is not linked and the project is still on the Free Tier.
 
-## Quick start
+The confirmation flag is an operator attestation, **not** an automated billing-status check. If you cannot guarantee the project is free-tier only, leave it false; the application will not make AI decisions or open new positions. Do not put the key in frontend code, source control, logs or issues. Google states that free-tier content may be used to improve its products; do not send private personal data.
+
+## Zero-cost scheduled runner (public GitHub repository)
+
+The `.github/workflows/isa-paper-cycle.yml` workflow runs one paper cycle every five minutes using standard GitHub-hosted runners. GitHub documents standard runners as free for public repositories. Scheduled workflows are best-effort, can be delayed or skipped, and only run from the repository's default branch. The public-repository schedule can be automatically disabled after 60 days without repository activity.
+
+The workflow stores the small SQLite paper-account database in GitHub Actions cache between runs. Cache storage is not a permanent database service. **If no previous state can be restored, the workflow fails closed instead of silently creating a fresh $1,000 account.** Cache eviction or service changes can stop the agent until state is restored or reviewed. Do not treat this as production-grade persistent storage or guaranteed continuous monitoring.
+
+### One-time setup after the PR is merged
+
+1. Open the repository's **Settings → Secrets and variables → Actions**.
+2. Add repository secret `ISA_GEMINI_API_KEY` with your Google AI Studio API key. Never paste the key into chat, a commit, an issue, or frontend code.
+3. Add repository secret `ISA_GEMINI_FREE_TIER_CONFIRMED` with the exact value `true` only after checking that the Google AI Studio project remains on the free tier and has no paid billing enabled. Otherwise omit it or set it to `false`; the bot will HOLD.
+4. Open **Actions → ISA autonomous paper cycle → Run workflow**.
+5. For the first-ever setup only, set `bootstrap` to `true` and run once. This creates the initial $1,000 virtual account and saves its state. Leave `bootstrap` false for all later runs.
+6. Check the workflow run summary. Later scheduled runs should restore the saved state and run one cycle. If a run reports missing state, stop and investigate; do not bootstrap again until the previous account state is recovered or you deliberately decide to reset the paper simulation.
+
+The workflow does not install a live broker, use real capital, or call paid services. The AI secret is passed only to the backend process as an environment variable. Removing the secret or setting the free-tier confirmation to false immediately makes AI unavailable and blocks new entries.
+
+## Run locally
+
+Python 3.11+:
 
 ```bash
-# 1. install
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-
-# 2. configure
-cp .env.example .env        # edit as needed (paper mode works with no keys)
-
-# 3. backtest
-python scripts/backtest.py --symbols BTCUSDT,ETHUSDT --timeframe 1h
-
-# 4. run paper trading (5 cycles)
+cp .env.example .env
+# Keep ISA_GEMINI_FREE_TIER_CONFIRMED=false until free-tier billing status is checked.
 python scripts/run_paper.py --cycles 5
-
-# 5. dashboard
-python dashboard/app.py     # http://localhost:8000
 ```
 
-Run the full 24/7 agent:
+Run the dashboard separately:
 
 ```bash
-PYTHONPATH=src python -m trading_agent.main
+python dashboard/app.py
 ```
 
----
+The dashboard binds to localhost by default. Do not expose it publicly without adding authentication and HTTPS.
 
-## Risk controls
-
-All limits are enforced in `risk_management.py` **before** any order is placed:
-
-- **Max position size:** 2% of equity per trade (`MAX_POSITION_PCT`)
-- **Risk per trade:** 1% of equity between entry and stop (`RISK_PER_TRADE_PCT`)
-- **Daily loss limit:** 3% → triggers kill switch (`MAX_DAILY_LOSS_PCT`)
-- **Max drawdown:** 15% peak-to-trough → triggers kill switch (`MAX_DRAWDOWN_PCT`)
-- **Portfolio exposure cap:** 30% (`MAX_PORTFOLIO_EXPOSURE_PCT`)
-- **Confidence gate:** only trade above `MIN_CONFIDENCE` (0.55)
-- **Kill switch:** halts trading on abnormal behavior / API errors
-
----
-
-## Configuration
-
-All secrets live in `.env` (never committed). See `.env.example` for the full
-list. The LLM layer is optional — with `LLM_ENABLED=false` the agent runs a
-deterministic rule-based ensemble and needs no external API.
-
----
-
-## Testing
+## Tests
 
 ```bash
-pytest
+pytest -vv
+python -m compileall -q src dashboard scripts tests
 ```
 
-Covers indicators, risk gates (including kill-switch paths), backtest metrics,
-and the paper-trading engine.
+GitHub Actions CI tests are configured for the feature branch and pull requests. The separate scheduled paper runner is activated only after the workflow is merged to the repository's default branch.
 
----
+## Cost and deployment limits
 
-## Live trading (advanced)
+The Python packages, public read-only market-data endpoints, Gemini Standard Free Tier (within its quotas), and standard GitHub Actions runners for this public repository have $0 listed usage. Provider quotas and terms still apply. The scheduled GitHub runner is best-effort, not guaranteed always-on hosting. No paid infrastructure is provisioned. Do not enable paid billing, paid runner types, subscriptions, or premium endpoints.
 
-1. Create exchange API keys with **trade** permission (no withdrawal).
-2. Set `EXCHANGE_API_KEY` / `EXCHANGE_API_SECRET` in `.env`.
-3. Start on testnet (`EXCHANGE_TESTNET=true`), verify behavior, then flip
-   `TRADING_MODE=live`.
+## Known limitations
 
-**This software is provided for educational purposes. Trading is risky and you
-can lose money. Use at your own risk.**
-
----
-
-## Project layout
-
-```
-money-repo/
-├── src/trading_agent/     # core package
-│   ├── config.py  db.py  llm.py  main.py
-│   ├── market_analysis.py  strategy_engine.py
-│   ├── risk_management.py  trade_execution.py
-│   ├── monitoring.py  self_improvement.py
-│   └── exchange/          # base, binance, bybit, paper
-├── dashboard/             # FastAPI app + HTML
-├── scripts/               # backtest, run_paper, daily_report
-├── tests/                 # pytest suite
-├── config/  data/  logs/
-├── requirements.txt  .env.example  Dockerfile
-```
+- Yahoo Finance is an unofficial public data source, not an institutional Forex feed; it can be delayed or rate-limited.
+- Only USD-quoted FX pairs EURUSD and GBPUSD are enabled. Other quote currencies require conversion support first.
+- Crypto is long-only spot paper trading; Forex supports long and unleveraged short simulation.
+- Gemini free-tier eligibility and billing attachment cannot be verified from this code; the operator must check Google AI Studio/Cloud billing settings.
+- No live trading, real-money performance claim, or guarantee of profitability is provided.

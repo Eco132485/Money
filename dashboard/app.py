@@ -37,7 +37,12 @@ def summary():
     perf = monitor.performance()
     return {
         "mode": settings.runtime.mode,
-        "symbols": settings.runtime.symbols,
+        "symbols": settings.runtime.symbols + [f"FX:{s}" for s in settings.runtime.forex_symbols],
+        "real_capital": 0,
+        "virtual_initial_balance": 1000,
+        "execution_mode": "paper",
+        "ai_enabled": settings.llm.enabled,
+        "ai_model": settings.llm.model,
         "equity": equity[-1]["equity"] if equity else settings.runtime.initial_balance,
         "cash": equity[-1]["cash"] if equity else settings.runtime.initial_balance,
         "exposure": equity[-1]["exposure"] if equity else 0,
