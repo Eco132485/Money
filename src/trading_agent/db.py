@@ -78,6 +78,11 @@ CREATE TABLE IF NOT EXISTS strategies (
 CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol);
 CREATE INDEX IF NOT EXISTS idx_orders_ts ON orders(ts);
 CREATE INDEX IF NOT EXISTS idx_equity_ts ON equity(ts);
+CREATE TABLE IF NOT EXISTS paper_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    ts REAL NOT NULL,
+    state TEXT NOT NULL
+);
 """
 
 
@@ -113,6 +118,26 @@ class Database:
         with self._init_lock:
             with self.cursor() as cur:
                 cur.executescript(SCHEMA)
+
+    # ---- durable paper account ----
+    def load_paper_state(self) -> Optional[Dict[str, Any]]:
+        with self.cursor() as cur:
+            cur.execute("SELECT state FROM paper_state WHERE id=1")
+            row = cur.fetchone()
+            if not row:
+                return None
+            try:
+                return json.loads(row["state"])
+            except (TypeError, ValueError):
+                return None
+
+    def save_paper_state(self, state: Dict[str, Any]) -> None:
+        with self.cursor() as cur:
+            cur.execute(
+                "INSERT INTO paper_state (id,ts,state) VALUES (1,?,?) "
+                "ON CONFLICT(id) DO UPDATE SET ts=excluded.ts,state=excluded.state",
+                (time.time(), json.dumps(state)),
+            )
 
     # ---- orders ----
     def record_order(self, symbol: str, side: str, qty: float, price: float,
