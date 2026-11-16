@@ -32,7 +32,7 @@ class TradingAgent:
         self.db = get_db()
         self.crypto_market = get_market_data()
         self.forex_market = YahooForexMarketData()
-        self.broker = PaperBroker(initial_balance=1000.0)
+        self.broker = PaperBroker(initial_balance=1000.0, state_store=self.db)
         self.risk = RiskManager()
         self.executor = TradeExecutor(self.broker, self.risk, self.db)
         self.engine = StrategyEngine()
