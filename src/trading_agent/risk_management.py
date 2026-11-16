@@ -47,7 +47,8 @@ class RiskManager:
                         current_exposure: float, open_positions: int,
                         day_start_equity: Optional[float], peak_equity: float,
                         stop_loss: Optional[float] = None,
-                        take_profit: Optional[float] = None) -> RiskDecision:
+                        take_profit: Optional[float] = None,
+                        side: str = "buy") -> RiskDecision:
         if self.killed:
             return RiskDecision(False, f"kill switch active: {self.kill_reason}")
         if equity <= 0 or price <= 0:
@@ -69,8 +70,10 @@ class RiskManager:
         exposure_cap = equity * self.cfg.max_portfolio_exposure_pct
         if current_exposure >= exposure_cap - 1e-9:
             return RiskDecision(False, "shared Forex+crypto exposure cap reached")
-        sl = stop_loss if stop_loss is not None else price * (1 - self.cfg.stop_loss_pct)
-        tp = take_profit if take_profit is not None else price * (1 + self.cfg.take_profit_pct)
+        if side not in {"buy", "sell"}:
+            return RiskDecision(False, "invalid trade direction")
+        sl = stop_loss if stop_loss is not None else price * (1 - self.cfg.stop_loss_pct if side == "buy" else 1 + self.cfg.stop_loss_pct)
+        tp = take_profit if take_profit is not None else price * (1 + self.cfg.take_profit_pct if side == "buy" else 1 - self.cfg.take_profit_pct)
         if sl <= 0 or sl == price:
             return RiskDecision(False, "invalid stop-loss")
         qty = self.position_size(equity, price, sl, current_exposure)
