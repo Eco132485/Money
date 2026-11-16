@@ -1,6 +1,6 @@
 # ISA AUTO TRADING
 
-A dual-market **Forex + crypto paper-trading application**. This repository is a software project, not a hosted 24/7 service.
+A dual-market **Forex + crypto paper-trading application**. It includes an optional best-effort scheduled runner on GitHub Actions; it is not a guaranteed 24/7 service.
 
 ## Hard operating rules
 
@@ -38,6 +38,23 @@ The model ID is `gemini-3.8-flash`. The official Google API pricing page lists a
 
 The confirmation flag is an operator attestation, **not** an automated billing-status check. If you cannot guarantee the project is free-tier only, leave it false; the application will not make AI decisions or open new positions. Do not put the key in frontend code, source control, logs or issues. Google states that free-tier content may be used to improve its products; do not send private personal data.
 
+## Zero-cost scheduled runner (public GitHub repository)
+
+The `.github/workflows/isa-paper-cycle.yml` workflow runs one paper cycle every five minutes using standard GitHub-hosted runners. GitHub documents standard runners as free for public repositories. Scheduled workflows are best-effort, can be delayed or skipped, and only run from the repository's default branch. The public-repository schedule can be automatically disabled after 60 days without repository activity.
+
+The workflow stores the small SQLite paper-account database in GitHub Actions cache between runs. Cache storage is not a permanent database service. **If no previous state can be restored, the workflow fails closed instead of silently creating a fresh $1,000 account.** Cache eviction or service changes can stop the agent until state is restored or reviewed. Do not treat this as production-grade persistent storage or guaranteed continuous monitoring.
+
+### One-time setup after the PR is merged
+
+1. Open the repository's **Settings → Secrets and variables → Actions**.
+2. Add repository secret `ISA_GEMINI_API_KEY` with your Google AI Studio API key. Never paste the key into chat, a commit, an issue, or frontend code.
+3. Add repository secret `ISA_GEMINI_FREE_TIER_CONFIRMED` with the exact value `true` only after checking that the Google AI Studio project remains on the free tier and has no paid billing enabled. Otherwise omit it or set it to `false`; the bot will HOLD.
+4. Open **Actions → ISA autonomous paper cycle → Run workflow**.
+5. For the first-ever setup only, set `bootstrap` to `true` and run once. This creates the initial $1,000 virtual account and saves its state. Leave `bootstrap` false for all later runs.
+6. Check the workflow run summary. Later scheduled runs should restore the saved state and run one cycle. If a run reports missing state, stop and investigate; do not bootstrap again until the previous account state is recovered or you deliberately decide to reset the paper simulation.
+
+The workflow does not install a live broker, use real capital, or call paid services. The AI secret is passed only to the backend process as an environment variable. Removing the secret or setting the free-tier confirmation to false immediately makes AI unavailable and blocks new entries.
+
 ## Run locally
 
 Python 3.11+:
@@ -66,11 +83,11 @@ pytest -vv
 python -m compileall -q src dashboard scripts tests
 ```
 
-GitHub Actions CI is configured for the feature branch. Local verification in the connected development sandbox is also required before considering changes ready.
+GitHub Actions CI tests are configured for the feature branch and pull requests. The separate scheduled paper runner is activated only after the workflow is merged to the repository's default branch.
 
 ## Cost and deployment limits
 
-The Python packages and public market-data endpoints used here are free to access, subject to provider quotas and terms. The code does not provision paid infrastructure. A reliable always-on deployment is **not included**: a free hosting tier may sleep, throttle, or change its limits. Do not deploy to a service that requires a paid plan or billing account.
+The Python packages, public read-only market-data endpoints, Gemini Standard Free Tier (within its quotas), and standard GitHub Actions runners for this public repository have $0 listed usage. Provider quotas and terms still apply. The scheduled GitHub runner is best-effort, not guaranteed always-on hosting. No paid infrastructure is provisioned. Do not enable paid billing, paid runner types, subscriptions, or premium endpoints.
 
 ## Known limitations
 
