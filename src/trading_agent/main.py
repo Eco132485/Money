@@ -57,7 +57,7 @@ class TradingAgent:
                 log.warning("market quote unavailable for %s: %s", portfolio_symbol, type(exc).__name__)
         return prices
 
-    def _process_symbol(self, market, raw_symbol: str, portfolio_symbol: str) -> None:
+    def _process_symbol(self, market, raw_symbol: str, portfolio_symbol: str, prices: Dict[str, float]) -> None:
         candles = market.get_klines(raw_symbol, settings.runtime.timeframe, 300)
         if len(candles) < 30:
             raise ValueError(f"insufficient candles for {portfolio_symbol}")
@@ -74,12 +74,17 @@ class TradingAgent:
         self.db.record_signal(portfolio_symbol, "gemini-3.8-flash", action,
                               confidence, view.price, {"market": view.to_dict(), "rationale": rationale})
 
-        prices = self._prices()
+        # Keep the per-cycle price snapshot shared across both markets. Missing
+        # quotes block new entries so exposure cannot be understated.
+        if portfolio_symbol not in prices:
+            prices[portfolio_symbol] = view.price
+        expected = [key for _, _, key in self._market_items()]
+        prices_complete = all(key in prices for key in expected)
         equity = self.broker.equity(prices)
         exposure = self.broker.exposure(prices)
         position_qty = self.broker.position_qty(portfolio_symbol)
 
-        if action == "buy" and position_qty <= 0:
+        if action == "buy" and position_qty <= 0 and prices_complete:
             decision = self.risk.pre_trade_check(
                 equity=equity, price=view.price, confidence=confidence,
                 current_exposure=exposure, open_positions=len(self.db.open_trades()),
@@ -106,13 +111,13 @@ class TradingAgent:
 
     def run_cycle(self) -> None:
         self.cycle += 1
-        # Manage exits first, using fresh quotes across both markets.
+        # Manage exits first, using one shared fresh quote snapshot.
         prices = self._prices()
         self.executor.manage_exits(prices)
 
         for market, raw_symbol, portfolio_symbol in self._market_items():
             try:
-                self._process_symbol(market, raw_symbol, portfolio_symbol)
+                self._process_symbol(market, raw_symbol, portfolio_symbol, prices)
             except Exception as exc:
                 log.exception("error processing %s: %s", portfolio_symbol, exc)
                 self.db.log("ERROR", "agent", f"{portfolio_symbol}: {type(exc).__name__}")
