@@ -5,6 +5,7 @@ import logging
 from typing import Any, Dict
 import requests
 from .config import settings
+from .widowmaker import widowmaker
 
 log = logging.getLogger("llm")
 
@@ -44,15 +45,9 @@ class LLMClient:
                 "rationale": "AI unavailable or response invalid; trading suspended"}
         if not self.available:
             return hold
-        system = (
-            "You are a cautious market analyst. Review the supplied market data and candidate. "
-            "Return JSON only with action buy, sell, or hold; confidence from 0 to 1; rationale. "
-            "Never invent missing market facts. If uncertain, return hold."
-        )
+        system = widowmaker.system_prompt()
         try:
-            raw = self.complete(system, json.dumps(
-                {"market": context, "candidate": rule_signal}, default=str
-            ))
+            raw = self.complete(system, widowmaker.user_prompt(context, rule_signal))
             data = json.loads(raw)
             action = str(data.get("action", "")).lower()
             confidence = float(data.get("confidence", 0))

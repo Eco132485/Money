@@ -38,6 +38,16 @@ The model ID is `gemini-3.8-flash`. The official Google API pricing page lists a
 
 The confirmation flag is an operator attestation, **not** an automated billing-status check. If you cannot guarantee the project is free-tier only, leave it false; the application will not make AI decisions or open new positions. Do not put the key in frontend code, source control, logs or issues. Google states that free-tier content may be used to improve its products; do not send private personal data.
 
+## Widowmaker, Ollama and Kronos
+
+Widowmaker is the deterministic prompt-optimisation layer used before Gemini analysis. It enforces evidence-only prompts and treats supplied market context as untrusted data.
+
+Ollama can be enabled as an independent reviewer. When enabled, its valid decision must agree with Gemini; a missing, invalid or conflicting response causes HOLD. The API key and reachable base URL are operator-provided. Ollama local APIs do not require a key, while direct cloud API requests require a bearer key.
+
+Kronos can be enabled as a forecast veto. The project expects an owner-operated HTTPS wrapper because the Kronos project provides a Python model/predictor rather than one universal hosted API. An opposing forecast causes HOLD. Set `KRONOS_REQUIRED=true` only after the wrapper has been deployed and verified; otherwise an unavailable optional forecast is recorded without silently fabricating values.
+
+See [docs/AI_INTEGRATIONS.md](docs/AI_INTEGRATIONS.md) for configuration names, endpoint contract and fail-closed behaviour. Both integrations are disabled by default until the owner supplies and verifies their API settings. No secret belongs in source control.
+
 ## Zero-cost scheduled runner (public GitHub repository)
 
 The `.github/workflows/isa-paper-cycle.yml` workflow runs one paper cycle every five minutes using standard GitHub-hosted runners. GitHub documents standard runners as free for public repositories. Scheduled workflows are best-effort, can be delayed or skipped, and only run from the repository's default branch. The public-repository schedule can be automatically disabled after 60 days without repository activity.

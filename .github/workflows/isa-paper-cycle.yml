@@ -61,6 +61,16 @@ jobs:
           DB_PATH: data/trading.db
           ISA_GEMINI_API_KEY: ${{ secrets.ISA_GEMINI_API_KEY }}
           ISA_GEMINI_FREE_TIER_CONFIRMED: ${{ secrets.ISA_GEMINI_FREE_TIER_CONFIRMED }}
+          OLLAMA_ENABLED: ${{ vars.OLLAMA_ENABLED }}
+          OLLAMA_BASE_URL: ${{ vars.OLLAMA_BASE_URL }}
+          OLLAMA_MODEL: ${{ vars.OLLAMA_MODEL }}
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+          OLLAMA_TIMEOUT_SECONDS: ${{ vars.OLLAMA_TIMEOUT_SECONDS }}
+          KRONOS_ENABLED: ${{ vars.KRONOS_ENABLED }}
+          KRONOS_REQUIRED: ${{ vars.KRONOS_REQUIRED }}
+          KRONOS_API_URL: ${{ secrets.KRONOS_API_URL }}
+          KRONOS_API_KEY: ${{ secrets.KRONOS_API_KEY }}
+          KRONOS_TIMEOUT_SECONDS: ${{ vars.KRONOS_TIMEOUT_SECONDS }}
         run: |
           mkdir -p data
           if [ -z "$ISA_GEMINI_API_KEY" ] || [ "$ISA_GEMINI_FREE_TIER_CONFIRMED" != "true" ]; then

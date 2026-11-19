@@ -12,6 +12,8 @@ from .exchange.binance import get_market_data
 from .exchange.forex import YahooForexMarketData
 from .exchange.paper import PaperBroker
 from .llm import llm_client
+from .ollama import ollama_reviewer
+from .kronos import kronos_forecaster
 from .market_analysis import analyze, candles_to_df
 from .monitoring import Monitor
 from .risk_management import RiskManager
@@ -112,11 +114,48 @@ class TradingAgent:
         # AI is the decision authority. Missing key, free-tier confirmation,
         # quota, network failure or malformed output means HOLD, never fallback.
         ai = llm_client.reason_signal(view.to_dict(), candidate.to_dict())
+        ollama_review = None
+        kronos_result = None
+
+        # Widowmaker's secondary-provider rule: an enabled Ollama reviewer must
+        # return a valid matching decision. Missing, invalid or conflicting output means HOLD.
+        if ai["action"] != "hold":
+            ollama_review = ollama_reviewer.review_signal(view.to_dict(), candidate.to_dict())
+            if ollama_review is not None:
+                if ollama_review["action"] != ai["action"]:
+                    ai = {"action": "hold", "confidence": 0.0,
+                          "rationale": "Widowmaker veto: Gemini and Ollama disagree or Ollama could not validate the signal."}
+                else:
+                    ai["confidence"] = min(float(ai["confidence"]), float(ollama_review["confidence"]))
+                    ai["rationale"] = str(ai["rationale"])[:220] + " | Ollama independently agreed."
+
+        # Kronos is a forecast veto only; it cannot create or execute a signal.
+        if ai["action"] != "hold" or kronos_forecaster.required:
+            kronos_result = kronos_forecaster.forecast(portfolio_symbol, settings.runtime.timeframe, candles)
+            if kronos_forecaster.required and (not kronos_result or not kronos_result.get("available")):
+                ai = {"action": "hold", "confidence": 0.0,
+                      "rationale": "Widowmaker veto: required Kronos forecast is unavailable."}
+            elif kronos_result and kronos_result.get("available"):
+                opposing = ((ai["action"] == "buy" and kronos_result["direction"] == "down") or
+                            (ai["action"] == "sell" and kronos_result["direction"] == "up"))
+                if opposing:
+                    ai = {"action": "hold", "confidence": 0.0,
+                          "rationale": "Widowmaker veto: Kronos forecast opposes the Gemini/Ollama signal."}
+
         action = ai["action"]
         confidence = ai["confidence"]
         rationale = ai["rationale"]
-        self.db.record_signal(portfolio_symbol, "gemini-3.8-flash", action,
-                              confidence, view.price, {"market": view.to_dict(), "rationale": rationale})
+        providers = ["gemini-3.8-flash"]
+        if ollama_review is not None:
+            providers.append("ollama:" + str(ollama_review.get("model", "review")))
+        if kronos_result and kronos_result.get("available"):
+            providers.append("kronos:" + str(kronos_result.get("model", "forecast")))
+        self.db.record_signal(portfolio_symbol, "+".join(providers), action,
+                              confidence, view.price, {
+                                  "market": view.to_dict(), "rationale": rationale,
+                                  "prompt_optimizer": "Widowmaker", "ollama_review": ollama_review,
+                                  "kronos_forecast": kronos_result,
+                              })
 
         # Keep the per-cycle price snapshot shared across both markets. Missing
         # quotes block new entries so exposure cannot be understated.
