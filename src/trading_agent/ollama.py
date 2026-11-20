@@ -19,7 +19,7 @@ class OllamaReviewer:
         self.base_url = os.getenv("OLLAMA_BASE_URL", "").strip().rstrip("/")
         self.model = os.getenv("OLLAMA_MODEL", "gemma4:31b").strip()
         self.api_key = os.getenv("OLLAMA_API_KEY", "").strip()
-        self.timeout = max(3, min(int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "20")), 45))
+        self.timeout = max(3, min(int(os.getenv("OLLAMA_TIMEOUT_SECONDS") or "20"), 45))
 
     @property
     def configured(self) -> bool:
