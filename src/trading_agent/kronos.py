@@ -21,7 +21,7 @@ class KronosForecaster:
         self.required = os.getenv("KRONOS_REQUIRED", "false").strip().lower() in {"1", "true", "yes", "on"}
         self.endpoint = os.getenv("KRONOS_API_URL", "").strip()
         self.api_key = os.getenv("KRONOS_API_KEY", "").strip()
-        self.timeout = max(3, min(int(os.getenv("KRONOS_TIMEOUT_SECONDS", "15")), 30))
+        self.timeout = max(3, min(int(os.getenv("KRONOS_TIMEOUT_SECONDS") or "15"), 30))
 
     def forecast(self, symbol: str, timeframe: str, candles: List[Any]) -> Optional[Dict[str, Any]]:
         if not self.enabled:

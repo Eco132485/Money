@@ -39,3 +39,17 @@ def test_kronos_required_without_endpoint_is_unavailable_and_fails_closed(monkey
     result = KronosForecaster().forecast("BTCUSDT", "1h", [])
     assert result["available"] is False
     assert result["direction"] == "unknown"
+
+
+def test_blank_optional_timeout_variables_use_safe_defaults(monkeypatch):
+    monkeypatch.setenv("OLLAMA_TIMEOUT_SECONDS", "")
+    monkeypatch.setenv("KRONOS_TIMEOUT_SECONDS", "")
+    assert OllamaReviewer().timeout == 20
+    assert KronosForecaster().timeout == 15
+
+
+def test_timeout_values_are_clamped(monkeypatch):
+    monkeypatch.setenv("OLLAMA_TIMEOUT_SECONDS", "999")
+    monkeypatch.setenv("KRONOS_TIMEOUT_SECONDS", "1")
+    assert OllamaReviewer().timeout == 45
+    assert KronosForecaster().timeout == 3
