@@ -70,6 +70,10 @@ The workflow stores the small SQLite paper-account database in GitHub Actions ca
 5. For the first-ever setup only, set `bootstrap` to `true` and run once. This creates the initial $50 virtual account and saves its state. Leave `bootstrap` false for all later runs.
 6. Check the workflow run summary. Later scheduled runs should restore the saved state and run one cycle. If a run reports missing state, stop and investigate; do not bootstrap again until the previous account state is recovered or you deliberately decide to reset the paper simulation.
 
+### One-time migration from the legacy $1,000 paper account
+
+After approving a reset, open **Actions → ISA autonomous paper cycle → Run workflow** on the default branch. Leave `bootstrap` false and set `archive_and_reset` to true. The workflow requires a restored cached SQLite database, archives the database and any SQLite sidecar files as a downloadable artifact (90-day retention), verifies that archive, and only then creates and saves a new $50 paper account. If the cache or database is missing, the migration fails closed. Do not use `bootstrap` as a substitute for this migration. Confirm the run is successful and download the legacy archive from the run's Artifacts section.
+
 The workflow does not install a live broker, use real capital, or call paid services. The AI secret is passed only to the backend process as an environment variable. Removing the secret or setting the free-tier confirmation to false immediately makes AI unavailable and blocks new entries.
 
 ## Run locally
