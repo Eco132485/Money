@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+from urllib.parse import urlparse
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -28,6 +29,9 @@ class KronosForecaster:
             return None
         if not self.endpoint:
             return {"available": False, "direction": "unknown", "reason": "Kronos is enabled but KRONOS_API_URL is missing"}
+        parsed_endpoint = urlparse(self.endpoint)
+        if parsed_endpoint.scheme.lower() != "https" or not parsed_endpoint.netloc:
+            return {"available": False, "direction": "unknown", "reason": "Kronos endpoint must use HTTPS"}
         rows = []
         for candle in candles[-512:]:
             rows.append({

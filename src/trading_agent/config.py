@@ -81,7 +81,8 @@ class RuntimeConfig:
     ])
     timeframe: str = os.getenv("TIMEFRAME", "1h")
     loop_interval_sec: int = _get_int("LOOP_INTERVAL_SEC", 60)
-    initial_balance: float = 1000.0
+    # Owner-approved virtual starting capital. This never authorizes real-money use.
+    initial_balance: float = 50.0
     db_path: str = os.getenv("DB_PATH", str(DATA_DIR / "trading.db"))
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
     dashboard_host: str = os.getenv("DASHBOARD_HOST", "127.0.0.1")

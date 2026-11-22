@@ -65,12 +65,19 @@ def reconcile_paper_state(db, broker: PaperBroker, risk: RiskManager) -> None:
 
 
 
+def is_exit_action(action: str, position_side: Optional[str]) -> bool:
+    """Provider vetoes may block entries, never a protective/discretionary exit."""
+    return (action == "sell" and position_side == "long") or (
+        action == "buy" and position_side == "short"
+    )
+
+
 class TradingAgent:
     def __init__(self):
         self.db = get_db()
         self.crypto_market = get_market_data()
         self.forex_market = YahooForexMarketData()
-        self.broker = PaperBroker(initial_balance=1000.0, state_store=self.db)
+        self.broker = PaperBroker(initial_balance=settings.runtime.initial_balance, state_store=self.db)
         self.risk = RiskManager()
         reconcile_paper_state(self.db, self.broker, self.risk)
         self.executor = TradeExecutor(self.broker, self.risk, self.db)
@@ -114,12 +121,14 @@ class TradingAgent:
         # AI is the decision authority. Missing key, free-tier confirmation,
         # quota, network failure or malformed output means HOLD, never fallback.
         ai = llm_client.reason_signal(view.to_dict(), candidate.to_dict())
+        current_position_side = self.broker.position_side(portfolio_symbol)
+        exit_signal = is_exit_action(ai["action"], current_position_side)
         ollama_review = None
         kronos_result = None
 
-        # Widowmaker's secondary-provider rule: an enabled Ollama reviewer must
-        # return a valid matching decision. Missing, invalid or conflicting output means HOLD.
-        if ai["action"] != "hold":
+        # Secondary-provider vetoes apply only to new entries. Never let a
+        # reviewer or forecast veto prevent closing an existing position.
+        if ai["action"] != "hold" and not exit_signal:
             ollama_review = ollama_reviewer.review_signal(view.to_dict(), candidate.to_dict())
             if ollama_review is not None:
                 if ollama_review["action"] != ai["action"]:
@@ -130,7 +139,7 @@ class TradingAgent:
                     ai["rationale"] = str(ai["rationale"])[:220] + " | Ollama independently agreed."
 
         # Kronos is a forecast veto only; it cannot create or execute a signal.
-        if ai["action"] != "hold" or kronos_forecaster.required:
+        if not exit_signal and (ai["action"] != "hold" or kronos_forecaster.required):
             kronos_result = kronos_forecaster.forecast(portfolio_symbol, settings.runtime.timeframe, candles)
             if kronos_forecaster.required and (not kronos_result or not kronos_result.get("available")):
                 ai = {"action": "hold", "confidence": 0.0,
@@ -164,7 +173,7 @@ class TradingAgent:
         equity = self.broker.equity(prices)
         exposure = self.broker.exposure(prices)
         position_qty = self.broker.position_qty(portfolio_symbol)
-        position_side = self.broker.position_side(portfolio_symbol)
+        position_side = current_position_side
         is_forex = portfolio_symbol.startswith("FX:")
 
         if action == "buy" and position_side == "short":
@@ -242,8 +251,9 @@ class TradingAgent:
         self.running = True
         signal.signal(signal.SIGINT, lambda *_: self.stop())
         signal.signal(signal.SIGTERM, lambda *_: self.stop())
-        log.info("ISA starting PAPER ONLY: virtual_equity=$1000 forex=%s crypto=%s AI=%s",
-                 settings.runtime.forex_symbols, settings.runtime.symbols, llm_client.available)
+        log.info("ISA starting PAPER ONLY: virtual_equity=$%.2f forex=%s crypto=%s AI=%s",
+                 settings.runtime.initial_balance, settings.runtime.forex_symbols,
+                 settings.runtime.symbols, llm_client.available)
         self.monitor.alert("ISA paper trader started; live trading is disabled.")
         while self.running:
             try:

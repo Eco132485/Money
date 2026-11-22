@@ -53,3 +53,27 @@ def test_timeout_values_are_clamped(monkeypatch):
     monkeypatch.setenv("KRONOS_TIMEOUT_SECONDS", "1")
     assert OllamaReviewer().timeout == 45
     assert KronosForecaster().timeout == 3
+
+
+def test_kronos_rejects_insecure_endpoint_before_sending_key(monkeypatch):
+    import trading_agent.kronos as module
+    monkeypatch.setenv("KRONOS_ENABLED", "true")
+    monkeypatch.setenv("KRONOS_API_URL", "http://example.invalid/forecast")
+    monkeypatch.setenv("KRONOS_API_KEY", "test-secret")
+
+    def forbidden_request(*args, **kwargs):
+        raise AssertionError("HTTP request must not be made to an insecure endpoint")
+
+    monkeypatch.setattr(module.requests, "post", forbidden_request)
+    result = KronosForecaster().forecast("BTCUSDT", "1h", [])
+    assert result["available"] is False
+    assert result["reason"] == "Kronos endpoint must use HTTPS"
+
+
+def test_provider_veto_does_not_block_existing_position_exits():
+    from trading_agent.main import is_exit_action
+    assert is_exit_action("sell", "long")
+    assert is_exit_action("buy", "short")
+    assert not is_exit_action("buy", None)
+    assert not is_exit_action("sell", None)
+    assert not is_exit_action("hold", "long")

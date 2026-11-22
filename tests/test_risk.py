@@ -71,3 +71,17 @@ def test_exit_logic():
     assert rm.check_exit("buy", 100, 98.0, 98.5, 103) == "stop_loss"
     assert rm.check_exit("buy", 100, 104, 98.5, 103) == "take_profit"
     assert rm.check_exit("buy", 100, 101, 98.5, 103) is None
+
+
+def test_fifty_dollar_account_respects_per_trade_risk_and_shared_exposure_caps():
+    cfg = RiskConfig(max_position_pct=0.30, max_portfolio_exposure_pct=0.30,
+                     risk_per_trade_pct=0.01, min_confidence=0.55,
+                     max_daily_loss_pct=0.03, max_drawdown_pct=0.15)
+    rm = RiskManager(cfg)
+    decision = rm.pre_trade_check(
+        equity=50.0, price=1.10, confidence=0.9, current_exposure=0,
+        open_positions=0, day_start_equity=50.0, peak_equity=50.0,
+    )
+    assert decision.approved
+    assert decision.risk_amount <= 0.50 + 1e-8
+    assert decision.qty * 1.10 <= 15.00 + 1e-8

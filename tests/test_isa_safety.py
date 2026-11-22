@@ -2,6 +2,7 @@ from trading_agent.db import Database
 from trading_agent.exchange.paper import PaperBroker
 from trading_agent.exchange.forex import YahooForexMarketData
 from trading_agent.llm import LLMClient
+import pytest
 
 
 def test_paper_account_restores_after_restart(tmp_path):
@@ -141,3 +142,25 @@ def test_orphan_trade_record_triggers_kill_switch(tmp_path):
     reconcile_paper_state(db, broker, risk)
     assert risk.killed
     assert "broker position missing" in risk.kill_reason
+
+
+
+def test_approved_paper_starting_balance_is_fifty_dollars(monkeypatch):
+    from trading_agent.config import RuntimeConfig, settings
+    monkeypatch.setenv("PAPER_INITIAL_BALANCE", "1000")
+    assert RuntimeConfig().initial_balance == 50.0
+    assert settings.runtime.initial_balance == 50.0
+    assert PaperBroker().initial_balance == 50.0
+
+
+def test_legacy_paper_account_is_not_silently_resized(tmp_path):
+    db = Database(str(tmp_path / "legacy-paper.db"))
+    legacy = PaperBroker(initial_balance=1000.0, fee_rate=0.0, state_store=db)
+    assert legacy.cash == 1000.0
+
+    with pytest.raises(ValueError, match="initialized with"):
+        PaperBroker(initial_balance=50.0, fee_rate=0.0, state_store=db)
+
+    # A failed migration attempt must leave the original saved account untouched.
+    reopened = PaperBroker(initial_balance=1000.0, fee_rate=0.0, state_store=db)
+    assert reopened.cash == 1000.0

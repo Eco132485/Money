@@ -3,10 +3,13 @@ on:
   push:
     branches:
       - feature/isa-dual-market-free-paper
+      - feature/isa-50usd-paper-account-hardening
       - feature/autonomous-trading-agent
   pull_request:
     branches:
+      - feature/widowmaker-bolt-integration
       - feature/autonomous-trading-agent
+      - feature/isa-50usd-paper-account-hardening
       - main
 permissions:
   contents: read
