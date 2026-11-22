@@ -48,7 +48,7 @@ jobs:
             isa-paper-state-
 
       - name: Fail closed if the saved paper account is missing
-        if: steps.state-cache.outputs.cache-matched-key == '' && inputs.bootstrap != true
+        if: steps.state-cache.outputs.cache-matched-key == '' && inputs.bootstrap != true && inputs.archive_and_reset != true
         run: |
           echo "::error::No saved ISA paper-account state was found. Refusing to create a fresh $50 account automatically. Only use the bootstrap option for the first-ever setup."
           exit 1
@@ -93,7 +93,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run one paper-only dual-market cycle
-        if: steps.state-cache.outputs.cache-matched-key != '' || inputs.bootstrap == true
+        if: steps.state-cache.outputs.cache-matched-key != '' || inputs.bootstrap == true || inputs.archive_and_reset == true
         env:
           TRADING_MODE: paper
           DB_PATH: data/trading.db
