@@ -39,7 +39,7 @@ def summary():
         "mode": settings.runtime.mode,
         "symbols": settings.runtime.symbols + [f"FX:{s}" for s in settings.runtime.forex_symbols],
         "real_capital": 0,
-        "virtual_initial_balance": 1000,
+        "virtual_initial_balance": settings.runtime.initial_balance,
         "execution_mode": "paper",
         "ai_enabled": settings.llm.enabled,
         "ai_model": settings.llm.model,

@@ -22,7 +22,7 @@ concurrency:
 jobs:
   paper-cycle:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 8
     steps:
       - name: Check out ISA
         uses: actions/checkout@v4
@@ -45,7 +45,7 @@ jobs:
       - name: Fail closed if the saved paper account is missing
         if: steps.state-cache.outputs.cache-matched-key == '' && inputs.bootstrap != true
         run: |
-          echo "::error::No saved ISA paper-account state was found. Refusing to create a fresh $1,000 account automatically. Only use the bootstrap option for the first-ever setup."
+          echo "::error::No saved ISA paper-account state was found. Refusing to create a fresh $50 account automatically. Only use the bootstrap option for the first-ever setup."
           exit 1
 
       - name: Install free open-source dependencies

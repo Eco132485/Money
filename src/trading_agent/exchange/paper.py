@@ -1,13 +1,13 @@
 """
 Paper-trading broker.
 
-Simulates a spot account: cash balance, long positions, market orders filled
-at the current price with a configurable fee. This is the default execution
-venue so the agent can run end-to-end without risking real capital.
+Simulates a spot account using virtual cash only. There is deliberately no
+live-broker adapter or real-money order route in this module.
 """
 from __future__ import annotations
 
 import logging
+import math
 import threading
 from typing import Dict, Optional
 
@@ -17,13 +17,33 @@ log = logging.getLogger("paper")
 
 
 class PaperBroker:
-    def __init__(self, initial_balance: float = 1000.0, fee_rate: float = 0.001, state_store=None):
-        self.initial_balance = initial_balance
+    def __init__(self, initial_balance: float = 50.0, fee_rate: float = 0.001, state_store=None):
+        if not math.isfinite(initial_balance) or initial_balance <= 0:
+            raise ValueError("Paper initial balance must be a positive finite amount.")
+        self.initial_balance = float(initial_balance)
         self.fee_rate = fee_rate
         self.state_store = state_store
         self._lock = threading.RLock()
         saved = state_store.load_paper_state() if state_store is not None else None
-        self.cash = float(saved.get("cash", initial_balance)) if saved else initial_balance
+
+        # Never silently resize, reset, or reinterpret an existing virtual account.
+        # A legacy $1,000 account must be explicitly archived/migrated before
+        # this $50 configuration can use its database.
+        if saved is not None:
+            saved_initial = saved.get("initial_balance")
+            if saved_initial is None:
+                raise ValueError(
+                    "Saved paper account has no starting-capital metadata; "
+                    "refusing to change or reuse it without an explicit migration."
+                )
+            if not math.isclose(float(saved_initial), self.initial_balance, rel_tol=0.0, abs_tol=1e-9):
+                raise ValueError(
+                    f"Saved paper account was initialized with ${float(saved_initial):.2f}, "
+                    f"but this run is configured for ${self.initial_balance:.2f}. "
+                    "Account state was not changed. Archive/review the old account before migration."
+                )
+
+        self.cash = float(saved.get("cash", initial_balance)) if saved else self.initial_balance
         self.positions: Dict[str, Dict[str, float]] = (
             {k: {"qty": float(v["qty"]), "avg_price": float(v["avg_price"]),
                   "side": v.get("side", "long"), "margin": float(v.get("margin", 0.0))}
@@ -72,7 +92,7 @@ class PaperBroker:
 
     # ---- orders ----
     def market_buy(self, symbol: str, quote_amount: float, price: float) -> OrderResult:
-        """Spend `quote_amount` of cash to buy `symbol` at `price`."""
+        """Spend quote_amount of virtual cash to buy symbol at price."""
         with self._lock:
             if price <= 0:
                 return OrderResult(False, symbol, "buy", 0, price, "rejected", "invalid price")

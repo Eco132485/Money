@@ -4,11 +4,18 @@ A dual-market **Forex + crypto paper-trading application**. It includes an optio
 
 ## Hard operating rules
 
-- **Real capital: $0.** The account begins with **$1,000 virtual paper equity**.
+- **Real capital: $0.** The account begins with **$50 virtual paper equity**.
 - **Everything must remain free:** public read-only market data, open-source Python dependencies, free-tier AI only, and no paid hosting, subscriptions, API credits or premium endpoints.
 - **Paper-only execution.** There is no live broker order route. Deposits, withdrawals and real-money transactions are out of scope.
 - If AI is unavailable, free quota is exhausted, market data is unavailable, or an AI response is invalid, new entries are held. There is no rule-based or paid-provider fallback.
 - The project must never link a paid billing account or upgrade an API project to a paid tier.
+
+## Owner-approved paper account
+
+- The new paper account starts with **$50 virtual equity**. This is a simulation only; real capital remains $0.
+- The $50 starting balance is fixed in the application; it is not overridden by environment variables.
+- Existing saved accounts are never silently reset or resized. If an older $1,000 state is restored, the agent stops with a clear capital-mismatch error. Preserve and review that state before performing a separately approved archive/migration.
+- Do not enable the scheduled workflow's bootstrap option to bypass a missing or mismatched state. Bootstrap is for first-ever account creation only.
 
 ## Markets
 
@@ -52,7 +59,7 @@ See [docs/AI_INTEGRATIONS.md](docs/AI_INTEGRATIONS.md) for configuration names, 
 
 The `.github/workflows/isa-paper-cycle.yml` workflow runs one paper cycle every five minutes using standard GitHub-hosted runners. GitHub documents standard runners as free for public repositories. Scheduled workflows are best-effort, can be delayed or skipped, and only run from the repository's default branch. The public-repository schedule can be automatically disabled after 60 days without repository activity.
 
-The workflow stores the small SQLite paper-account database in GitHub Actions cache between runs. Cache storage is not a permanent database service. **If no previous state can be restored, the workflow fails closed instead of silently creating a fresh $1,000 account.** Cache eviction or service changes can stop the agent until state is restored or reviewed. Do not treat this as production-grade persistent storage or guaranteed continuous monitoring.
+The workflow stores the small SQLite paper-account database in GitHub Actions cache between runs. Cache storage is not a permanent database service. **If no previous state can be restored, the workflow fails closed instead of silently creating a fresh $50 account.** Cache eviction or service changes can stop the agent until state is restored or reviewed. Do not treat this as production-grade persistent storage or guaranteed continuous monitoring.
 
 ### One-time setup after the PR is merged
 
@@ -60,7 +67,7 @@ The workflow stores the small SQLite paper-account database in GitHub Actions ca
 2. Add repository secret `ISA_GEMINI_API_KEY` with your Google AI Studio API key. Never paste the key into chat, a commit, an issue, or frontend code.
 3. Add repository secret `ISA_GEMINI_FREE_TIER_CONFIRMED` with the exact value `true` only after checking that the Google AI Studio project remains on the free tier and has no paid billing enabled. Otherwise omit it or set it to `false`; the bot will HOLD.
 4. Open **Actions → ISA autonomous paper cycle → Run workflow**.
-5. For the first-ever setup only, set `bootstrap` to `true` and run once. This creates the initial $1,000 virtual account and saves its state. Leave `bootstrap` false for all later runs.
+5. For the first-ever setup only, set `bootstrap` to `true` and run once. This creates the initial $50 virtual account and saves its state. Leave `bootstrap` false for all later runs.
 6. Check the workflow run summary. Later scheduled runs should restore the saved state and run one cycle. If a run reports missing state, stop and investigate; do not bootstrap again until the previous account state is recovered or you deliberately decide to reset the paper simulation.
 
 The workflow does not install a live broker, use real capital, or call paid services. The AI secret is passed only to the backend process as an environment variable. Removing the secret or setting the free-tier confirmation to false immediately makes AI unavailable and blocks new entries.
