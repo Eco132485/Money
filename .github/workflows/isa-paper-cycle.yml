@@ -11,6 +11,11 @@ on:
         required: false
         type: boolean
         default: false
+      archive_and_reset:
+        description: "Archive the restored legacy paper account, then create a fresh $50 simulation"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -48,8 +53,41 @@ jobs:
           echo "::error::No saved ISA paper-account state was found. Refusing to create a fresh $50 account automatically. Only use the bootstrap option for the first-ever setup."
           exit 1
 
+      - name: Archive the existing paper account before migration
+        if: inputs.archive_and_reset == true
+        run: |
+          set -euo pipefail
+          if [ -z "${{ steps.state-cache.outputs.cache-matched-key }}" ]; then
+            echo "::error::No cached account was restored; refusing to claim an archive or create a replacement."
+            exit 1
+          fi
+          if [ ! -f data/trading.db ]; then
+            echo "::error::The restored SQLite database is missing; refusing migration."
+            exit 1
+          fi
+          mkdir -p migration-archive
+          tar -czf "migration-archive/legacy-isa-paper-state-${{ github.run_id }}.tar.gz" data/trading.db*
+          echo "Archived the restored legacy database and SQLite sidecar files."
+
+      - name: Preserve legacy account as a downloadable artifact
+        if: inputs.archive_and_reset == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-isa-paper-state-${{ github.run_id }}
+          path: migration-archive/legacy-isa-paper-state-${{ github.run_id }}.tar.gz
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Start a fresh $50 simulation after archive verification
+        if: inputs.archive_and_reset == true
+        run: |
+          set -euo pipefail
+          test -s "migration-archive/legacy-isa-paper-state-${{ github.run_id }}.tar.gz"
+          rm -f data/trading.db data/trading.db-wal data/trading.db-shm
+          echo "Legacy state archived and verified; the paper runner will initialise a new $50 account."
+
       - name: Install free open-source dependencies
-        if: steps.state-cache.outputs.cache-matched-key != '' || inputs.bootstrap == true
+        if: steps.state-cache.outputs.cache-matched-key != '' || inputs.bootstrap == true || inputs.archive_and_reset == true
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
