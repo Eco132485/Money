@@ -84,7 +84,7 @@ jobs:
           set -euo pipefail
           test -s "migration-archive/legacy-isa-paper-state-${{ github.run_id }}.tar.gz"
           rm -f data/trading.db data/trading.db-wal data/trading.db-shm
-          echo "Legacy state archived and verified; the paper runner will initialise a new $50 account."
+          echo "Legacy state archived and verified; the paper runner will initialise a new 50 USD virtual account."
 
       - name: Install free open-source dependencies
         if: steps.state-cache.outputs.cache-matched-key != '' || inputs.bootstrap == true || inputs.archive_and_reset == true
